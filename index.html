@@ -113,16 +113,20 @@
       return trimmed === '' || trimmed === '0' || upper === 'N/A';
     }
 
-    function renderTable(rows, title) {
+    function renderTable(rows, title, enablePagination = true) {
       if (!rows.length) {
         resultEl.innerHTML = `<p>${title}: no rows found.</p>`;
         return;
       }
-      allRows = rows;
-      displayMode = 'table';
-      currentDisplayCount = 10;
       
-      const displayRows = rows.slice(0, currentDisplayCount);
+      let displayRows = rows;
+      if (enablePagination) {
+        allRows = rows;
+        displayMode = 'table';
+        currentDisplayCount = 10;
+        displayRows = rows.slice(0, currentDisplayCount);
+      }
+      
       const table = document.createElement('table');
       const thead = document.createElement('thead');
       const headerRow = document.createElement('tr');
@@ -144,16 +148,21 @@
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
-      resultEl.innerHTML = `<p>${title}: ${rows.length} row(s) | Showing ${displayRows.length} of ${rows.length}</p>`;
+      
+      if (enablePagination) {
+        resultEl.innerHTML = `<p>${title}: ${rows.length} row(s) | Showing ${displayRows.length} of ${rows.length}</p>`;
+      } else {
+        resultEl.innerHTML = `<p>${title}: ${rows.length} row(s)</p>`;
+      }
       resultEl.appendChild(table);
       
-      if (rows.length > currentDisplayCount) {
+      if (enablePagination && rows.length > currentDisplayCount) {
         const loadMoreBtn = document.createElement('button');
         loadMoreBtn.textContent = 'Load More';
         loadMoreBtn.style.marginTop = '12px';
         loadMoreBtn.addEventListener('click', () => {
           currentDisplayCount += 10;
-          renderTable(allRows, title);
+          renderTable(allRows, title, enablePagination);
         });
         resultEl.appendChild(loadMoreBtn);
       }
@@ -288,7 +297,7 @@
         const cell = row[upcColumnIndex] || '';
         return !isMissingUpc(cell);
       });
-      renderTable(keptRows, 'Rows with UPC kept');
+      renderTable(keptRows, 'Rows with UPC kept', false);
       const csvText = csvToString([headers, ...keptRows]);
       const downloadLink = document.createElement('button');
       downloadLink.textContent = 'Download filtered CSV';
