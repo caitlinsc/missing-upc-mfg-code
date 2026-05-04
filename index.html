@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSV UPC Filter Tool</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      max-width: 960px;
+    }
+    h1 {
+      margin-bottom: 12px;
+    }
+    input,
+    button,
+    select {
+      margin: 8px 0;
+      padding: 8px;
+      font-size: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+    th,
+    td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #f0f0f0;
+    }
+    .actions {
+      margin-top: 12px;
+    }
+    .output {
+      margin-top: 16px;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>CSV UPC Filter Tool</h1>
+  <p>Upload a CSV file containing SKU, name, brand, UPC, etc. Then choose whether to show rows missing UPC or to remove them and download the cleaned CSV.</p>
+
+  <input id="csvFile" type="file" accept=".csv" />
+  <div class="actions">
+    <button id="showMissing">Show rows missing UPC</button>
+    <button id="removeMissing">Remove rows missing UPC</button>
+  </div>
+  <div id="status" class="output"></div>
+  <div id="result" class="output"></div>
+
+  <script>
+    const csvFileInput = document.getElementById('csvFile');
+    const showMissingButton = document.getElementById('showMissing');
+    const removeMissingButton = document.getElementById('removeMissing');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+
+    let parsedData = null;
+    let headers = [];
+    let upcColumnIndex = -1;
+
+    function parseCsv(text) {
+      const rows = [];
+      const pattern = /(?:\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*|\s*([^,]*?)\s*)(?:,|$)/g;
+      const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+      for (const line of lines) {
+        const row = [];
+        let match;
+        pattern.lastIndex = 0;
+        while ((match = pattern.exec(line)) && (match[0] !== '')) {
+          row.push(match[1] !== undefined ? match[1].replace(/\\"/g, '"') : match[2]);
+          if (pattern.lastIndex === 0) break;
+        }
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    function loadCsv(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file);
+      });
+    }
+
+    function findUpcColumn(headerRow) {
+      const normalized = headerRow.map(cell => cell.toLowerCase().trim());
+      return normalized.findIndex(cell => cell === 'upc' || cell === 'barcode' || cell === 'gtin');
+    }
+
+    function renderTable(rows, title) {
+      if (!rows.length) {
+        resultEl.innerHTML = `<p>${title}: no rows found.</p>`;
+        return;
+      }
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      headers.forEach(headerText => {
+        const th = document.createElement('th');
+        th.textContent = headerText;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        headers.forEach((_, index) => {
+          const td = document.createElement('td');
+          td.textContent = row[index] || '';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      resultEl.innerHTML = `<p>${title}: ${rows.length} row(s)</p>`;
+      resultEl.appendChild(table);
+    }
+
+    function csvToString(rows) {
+      return rows.map(row => row.map(cell => {
+        if (cell == null) return '';
+        const value = String(cell);
+        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+          return '"' + value.replace(/"/g, '""') + '"';
+        }
+        return value;
+      }).join(',')).join('\r\n');
+    }
+
+    function downloadCsv(data, filename = 'filtered.csv') {
+      const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    async function prepareData() {
+      const file = csvFileInput.files[0];
+      if (!file) {
+        statusEl.textContent = 'Please select a CSV file first.';
+        return false;
+      }
+      try {
+        statusEl.textContent = 'Loading CSV...';
+        const text = await loadCsv(file);
+        const rows = parseCsv(text);
+        if (rows.length < 2) {
+          statusEl.textContent = 'CSV needs at least a header row and one data row.';
+          return false;
+        }
+        headers = rows[0];
+        parsedData = rows.slice(1).filter(row => row.some(cell => cell !== undefined));
+        upcColumnIndex = findUpcColumn(headers);
+        if (upcColumnIndex === -1) {
+          statusEl.textContent = 'UPC column not found. Please ensure there is a header named UPC, Barcode, or GTIN.';
+          return false;
+        }
+        statusEl.textContent = `Loaded ${parsedData.length} data row(s). UPC column found at header index ${upcColumnIndex}.`;
+        return true;
+      } catch (error) {
+        statusEl.textContent = 'Could not parse the CSV file. Check file encoding and format.';
+        return false;
+      }
+    }
+
+    showMissingButton.addEventListener('click', async () => {
+      resultEl.innerHTML = '';
+      if (!await prepareData()) return;
+      const missingRows = parsedData.filter(row => {
+        const cell = row[upcColumnIndex] || '';
+        return String(cell).trim() === '';
+      });
+      renderTable(missingRows, 'Rows missing UPC');
+    });
+
+    removeMissingButton.addEventListener('click', async () => {
+      resultEl.innerHTML = '';
+      if (!await prepareData()) return;
+      const keptRows = parsedData.filter(row => {
+        const cell = row[upcColumnIndex] || '';
+        return String(cell).trim() !== '';
+      });
+      renderTable(keptRows, 'Rows with UPC kept');
+      const csvText = csvToString([headers, ...keptRows]);
+      const downloadLink = document.createElement('button');
+      downloadLink.textContent = 'Download filtered CSV';
+      downloadLink.addEventListener('click', () => downloadCsv(csvText, 'filtered-upc.csv'));
+      resultEl.appendChild(downloadLink);
+    });
+  </script>
+</body>
+</html>
