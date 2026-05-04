@@ -47,12 +47,12 @@
 </head>
 <body>
   <h1>CSV UPC Filter Tool</h1>
-  <p>Upload a CSV file containing SKU, name, brand, UPC, etc. Then choose to extract SKUs missing UPC or to remove those rows and download the cleaned CSV.</p>
+  <p>Upload a CSV file containing SKU, name, brand, UPC, etc. Then choose to preview rows with UPC or remove those rows and download the cleaned CSV.</p>
 
   <input id="csvFile" type="file" accept=".csv" />
   <div class="actions">
-    <button id="showMissing">Show SKUs missing UPC</button>
-    <button id="removeMissing">Remove rows missing UPC</button>
+    <button id="showMissing">Preview rows with UPC</button>
+    <button id="removeMissing">Remove rows with UPC</button>
   </div>
   <div id="status" class="output"></div>
   <div id="result" class="output"></div>
@@ -275,19 +275,12 @@
       resultEl.innerHTML = '';
       if (!await prepareData()) return;
       
-      const skuColumnIndex = findSkuColumn(headers);
-      if (skuColumnIndex === -1) {
-        statusEl.textContent = 'SKU column not found. Please ensure there is a header named SKU, Product ID, or ID.';
-        return;
-      }
-      
-      const missingRows = parsedData.filter(row => {
+      const rowsWithUpc = parsedData.filter(row => {
         const cell = row[upcColumnIndex] || '';
-        return isMissingUpc(cell);
+        return !isMissingUpc(cell);
       });
       
-      const skus = missingRows.map(row => row[skuColumnIndex] || '');
-      renderSkuList(skus, 'SKUs missing UPC');
+      renderTable(rowsWithUpc, 'Rows with UPC', true);
     });
 
     removeMissingButton.addEventListener('click', async () => {
@@ -295,9 +288,9 @@
       if (!await prepareData()) return;
       const keptRows = parsedData.filter(row => {
         const cell = row[upcColumnIndex] || '';
-        return !isMissingUpc(cell);
+        return isMissingUpc(cell);
       });
-      renderTable(keptRows, 'Rows with UPC kept', false);
+      renderTable(keptRows, 'Rows without UPC (kept)', false);
       const csvText = csvToString([headers, ...keptRows]);
       const downloadLink = document.createElement('button');
       downloadLink.textContent = 'Download filtered CSV';
