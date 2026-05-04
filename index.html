@@ -47,11 +47,11 @@
 </head>
 <body>
   <h1>CSV UPC Filter Tool</h1>
-  <p>Upload a CSV file containing SKU, name, brand, UPC, etc. Then choose whether to show rows missing UPC or to remove them and download the cleaned CSV.</p>
+  <p>Upload a CSV file containing SKU, name, brand, UPC, etc. Then choose to extract SKUs missing UPC or to remove those rows and download the cleaned CSV.</p>
 
   <input id="csvFile" type="file" accept=".csv" />
   <div class="actions">
-    <button id="showMissing">Show rows missing UPC</button>
+    <button id="showMissing">Show SKUs missing UPC</button>
     <button id="removeMissing">Remove rows missing UPC</button>
   </div>
   <div id="status" class="output"></div>
@@ -99,6 +99,11 @@
       return normalized.findIndex(cell => cell === 'upc' || cell === 'barcode' || cell === 'gtin');
     }
 
+    function findSkuColumn(headerRow) {
+      const normalized = headerRow.map(cell => cell.toLowerCase().trim());
+      return normalized.findIndex(cell => cell === 'sku' || cell === 'product id' || cell === 'id');
+    }
+
     function renderTable(rows, title) {
       if (!rows.length) {
         resultEl.innerHTML = `<p>${title}: no rows found.</p>`;
@@ -127,6 +132,42 @@
       table.appendChild(tbody);
       resultEl.innerHTML = `<p>${title}: ${rows.length} row(s)</p>`;
       resultEl.appendChild(table);
+    }
+
+    function renderSkuList(skus, title) {
+      if (!skus.length) {
+        resultEl.innerHTML = `<p>${title}: no SKUs found.</p>`;
+        return;
+      }
+      const listEl = document.createElement('div');
+      const heading = document.createElement('p');
+      heading.innerHTML = `<strong>${title}: ${skus.length} SKU(s)</strong>`;
+      listEl.appendChild(heading);
+      
+      const ul = document.createElement('ul');
+      skus.forEach(sku => {
+        const li = document.createElement('li');
+        li.textContent = sku;
+        ul.appendChild(li);
+      });
+      listEl.appendChild(ul);
+      
+      const downloadLink = document.createElement('button');
+      downloadLink.textContent = 'Download as text file';
+      downloadLink.addEventListener('click', () => {
+        const text = skus.join('\n');
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'missing-upc-skus.txt';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+      listEl.appendChild(downloadLink);
+      
+      resultEl.innerHTML = '';
+      resultEl.appendChild(listEl);
     }
 
     function csvToString(rows) {
@@ -182,11 +223,20 @@
     showMissingButton.addEventListener('click', async () => {
       resultEl.innerHTML = '';
       if (!await prepareData()) return;
+      
+      const skuColumnIndex = findSkuColumn(headers);
+      if (skuColumnIndex === -1) {
+        statusEl.textContent = 'SKU column not found. Please ensure there is a header named SKU, Product ID, or ID.';
+        return;
+      }
+      
       const missingRows = parsedData.filter(row => {
         const cell = row[upcColumnIndex] || '';
         return String(cell).trim() === '';
       });
-      renderTable(missingRows, 'Rows missing UPC');
+      
+      const skus = missingRows.map(row => row[skuColumnIndex] || '');
+      renderSkuList(skus, 'SKUs missing UPC');
     });
 
     removeMissingButton.addEventListener('click', async () => {
