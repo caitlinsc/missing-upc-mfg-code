@@ -67,6 +67,9 @@
     let parsedData = null;
     let headers = [];
     let upcColumnIndex = -1;
+    let currentDisplayCount = 10;
+    let allRows = null;
+    let displayMode = null;
 
     function parseCsv(text) {
       const rows = [];
@@ -104,11 +107,22 @@
       return normalized.findIndex(cell => cell === 'sku' || cell === 'product id' || cell === 'id');
     }
 
+    function isMissingUpc(cell) {
+      const trimmed = String(cell).trim();
+      const upper = trimmed.toUpperCase();
+      return trimmed === '' || trimmed === '0' || upper === 'N/A';
+    }
+
     function renderTable(rows, title) {
       if (!rows.length) {
         resultEl.innerHTML = `<p>${title}: no rows found.</p>`;
         return;
       }
+      allRows = rows;
+      displayMode = 'table';
+      currentDisplayCount = 10;
+      
+      const displayRows = rows.slice(0, currentDisplayCount);
       const table = document.createElement('table');
       const thead = document.createElement('thead');
       const headerRow = document.createElement('tr');
@@ -120,7 +134,7 @@
       thead.appendChild(headerRow);
       table.appendChild(thead);
       const tbody = document.createElement('tbody');
-      rows.forEach(row => {
+      displayRows.forEach(row => {
         const tr = document.createElement('tr');
         headers.forEach((_, index) => {
           const td = document.createElement('td');
@@ -130,8 +144,19 @@
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
-      resultEl.innerHTML = `<p>${title}: ${rows.length} row(s)</p>`;
+      resultEl.innerHTML = `<p>${title}: ${rows.length} row(s) | Showing ${displayRows.length} of ${rows.length}</p>`;
       resultEl.appendChild(table);
+      
+      if (rows.length > currentDisplayCount) {
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.textContent = 'Load More';
+        loadMoreBtn.style.marginTop = '12px';
+        loadMoreBtn.addEventListener('click', () => {
+          currentDisplayCount += 10;
+          renderTable(allRows, title);
+        });
+        resultEl.appendChild(loadMoreBtn);
+      }
     }
 
     function renderSkuList(skus, title) {
@@ -139,21 +164,38 @@
         resultEl.innerHTML = `<p>${title}: no SKUs found.</p>`;
         return;
       }
+      allRows = skus;
+      displayMode = 'sku';
+      currentDisplayCount = 10;
+      
+      const displaySkus = skus.slice(0, currentDisplayCount);
       const listEl = document.createElement('div');
       const heading = document.createElement('p');
-      heading.innerHTML = `<strong>${title}: ${skus.length} SKU(s)</strong>`;
+      heading.innerHTML = `<strong>${title}: ${skus.length} SKU(s) | Showing ${displaySkus.length} of ${skus.length}</strong>`;
       listEl.appendChild(heading);
       
       const ul = document.createElement('ul');
-      skus.forEach(sku => {
+      displaySkus.forEach(sku => {
         const li = document.createElement('li');
         li.textContent = sku;
         ul.appendChild(li);
       });
       listEl.appendChild(ul);
       
+      if (skus.length > currentDisplayCount) {
+        const loadMoreBtn = document.createElement('button');
+        loadMoreBtn.textContent = 'Load More';
+        loadMoreBtn.style.marginTop = '12px';
+        loadMoreBtn.addEventListener('click', () => {
+          currentDisplayCount += 10;
+          renderSkuList(allRows, title);
+        });
+        listEl.appendChild(loadMoreBtn);
+      }
+      
       const downloadLink = document.createElement('button');
       downloadLink.textContent = 'Download as text file';
+      downloadLink.style.marginLeft = '8px';
       downloadLink.addEventListener('click', () => {
         const text = skus.join('\n');
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' });
@@ -232,7 +274,7 @@
       
       const missingRows = parsedData.filter(row => {
         const cell = row[upcColumnIndex] || '';
-        return String(cell).trim() === '';
+        return isMissingUpc(cell);
       });
       
       const skus = missingRows.map(row => row[skuColumnIndex] || '');
@@ -244,7 +286,7 @@
       if (!await prepareData()) return;
       const keptRows = parsedData.filter(row => {
         const cell = row[upcColumnIndex] || '';
-        return String(cell).trim() !== '';
+        return !isMissingUpc(cell);
       });
       renderTable(keptRows, 'Rows with UPC kept');
       const csvText = csvToString([headers, ...keptRows]);
