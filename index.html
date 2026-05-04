@@ -290,10 +290,11 @@
         const cell = row[upcColumnIndex] || '';
         return isMissingUpc(cell);
       });
-      renderTable(keptRows, 'Rows without UPC (kept)', false);
+      renderTable(keptRows, 'Rows without UPC (kept)', true);
       const csvText = csvToString([headers, ...keptRows]);
       const downloadLink = document.createElement('button');
       downloadLink.textContent = 'Download filtered CSV';
+      downloadLink.style.marginTop = '12px';
       downloadLink.addEventListener('click', () => downloadCsv(csvText, 'filtered-upc.csv'));
       resultEl.appendChild(downloadLink);
     });
