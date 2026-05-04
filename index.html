@@ -1,303 +1,436 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CSV UPC Filter Tool</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 24px;
-      max-width: 960px;
-    }
-    h1 {
-      margin-bottom: 12px;
-    }
-    input,
-    button,
-    select {
-      margin: 8px 0;
-      padding: 8px;
-      font-size: 1rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 16px;
-    }
-    th,
-    td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background: #f0f0f0;
-    }
-    .actions {
-      margin-top: 12px;
-    }
-    .output {
-      margin-top: 16px;
-    }
-    .hidden {
-      display: none;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CSV UPC Filter Tool</title>
+<style>
+  :root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.15);
+    --border-strong: rgba(0,0,0,0.3);
+    --text: #1f1e1c;
+    --text-muted: #5f5e5a;
+    --accent: #185FA5;
+    --accent-bg: #E6F1FB;
+    --danger: #A32D2D;
+    --danger-bg: #FCEBEB;
+    --success: #0F6E56;
+    --success-bg: #E1F5EE;
+    --warn-bg: #FAEEDA;
+    --warn-text: #854F0B;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    font-size: 14px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 500; margin: 0 0 4px; }
+  .subtitle { color: var(--text-muted); margin: 0 0 24px; font-size: 14px; }
+
+  .panel {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .panel h2 {
+    font-size: 16px; font-weight: 500; margin: 0 0 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent-bg); color: var(--accent);
+    font-size: 12px; font-weight: 500;
+  }
+
+  label {
+    display: block; font-size: 13px; color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  input[type="file"] {
+    font-size: 13px;
+    padding: 6px 0;
+  }
+
+  button {
+    font-family: inherit; font-size: 13px; font-weight: 500;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer;
+    background: var(--surface); color: var(--text);
+    border: 0.5px solid var(--border-strong);
+    transition: background 0.15s;
+  }
+  button:hover:not(:disabled) { background: var(--bg); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary {
+    background: var(--accent); color: white;
+    border-color: var(--accent);
+  }
+  button.primary:hover:not(:disabled) { background: #134B82; }
+
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+
+  .status {
+    padding: 10px 12px; border-radius: 8px; font-size: 13px;
+    margin-top: 10px;
+  }
+  .status.ok { background: var(--success-bg); color: var(--success); }
+  .status.err { background: var(--danger-bg); color: var(--danger); }
+  .status.warn { background: var(--warn-bg); color: var(--warn-text); }
+
+  .summary {
+    background: var(--accent-bg); color: var(--accent);
+    padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .summary p { margin: 2px 0; }
+  .summary strong { font-weight: 600; }
+
+  .table-wrap {
+    max-height: 500px; overflow: auto;
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px;
+  }
+  table th {
+    text-align: left; font-weight: 500; color: var(--text-muted);
+    padding: 8px 12px; font-size: 12px;
+    border-bottom: 0.5px solid var(--border);
+    background: var(--bg);
+    position: sticky; top: 0;
+    white-space: nowrap;
+  }
+  table td {
+    padding: 6px 12px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  table tr:last-child td { border-bottom: none; }
+  table tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
+
+  .sku-list {
+    margin: 0; padding: 0;
+    list-style: none;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    max-height: 500px; overflow-y: auto;
+  }
+  .sku-list li {
+    padding: 6px 14px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  .sku-list li:last-child { border-bottom: none; }
+  .sku-list li:nth-child(even) { background: rgba(0,0,0,0.015); }
+
+  .empty-state {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .credit-footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 0.5px solid var(--border);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .credit-footer a { color: var(--text-muted); }
+  .credit-footer a:hover { color: var(--accent); }
+</style>
 </head>
 <body>
-  <h1>CSV UPC Filter Tool</h1>
-  <p>Upload a CSV file containing SKU, name, brand, UPC, etc. Then choose to preview rows with UPC or remove those rows and download the cleaned CSV.</p>
+<div class="container">
 
+<h1>CSV UPC filter</h1>
+<p class="subtitle">Upload a CSV with SKU, name, brand, and UPC columns. Preview rows that have a UPC, or remove them and download what's left.</p>
+
+<div class="panel">
+  <h2><span class="panel-num">1</span>Upload CSV</h2>
   <input id="csvFile" type="file" accept=".csv" />
-  <div class="actions">
-    <button id="showMissing">Preview rows with UPC</button>
-    <button id="removeMissing">Remove rows with UPC</button>
+  <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+    The tool looks for a column named <strong>UPC</strong>, <strong>Barcode</strong>, or <strong>GTIN</strong>. Cells that are blank, <code>0</code>, or <code>N/A</code> count as missing.
   </div>
-  <div id="status" class="output"></div>
-  <div id="result" class="output"></div>
+</div>
 
-  <script>
-    const csvFileInput = document.getElementById('csvFile');
-    const showMissingButton = document.getElementById('showMissing');
-    const removeMissingButton = document.getElementById('removeMissing');
-    const statusEl = document.getElementById('status');
-    const resultEl = document.getElementById('result');
+<div class="panel">
+  <h2><span class="panel-num">2</span>Filter</h2>
+  <div class="actions">
+    <button id="showMissing" class="primary">Preview rows with UPC</button>
+    <button id="removeMissing">Remove rows with UPC and download</button>
+  </div>
+  <div id="status"></div>
+</div>
 
-    let parsedData = null;
-    let headers = [];
-    let upcColumnIndex = -1;
-    let currentDisplayCount = 10;
-    let allRows = null;
-    let displayMode = null;
+<div class="panel" id="resultPanel" style="display:none;">
+  <h2><span class="panel-num">3</span>Results</h2>
+  <div id="result"></div>
+</div>
 
-    function parseCsv(text) {
-      const rows = [];
-      const pattern = /(?:\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*|\s*([^,]*?)\s*)(?:,|$)/g;
-      const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-      for (const line of lines) {
-        const row = [];
-        let match;
-        pattern.lastIndex = 0;
-        while ((match = pattern.exec(line)) && (match[0] !== '')) {
-          row.push(match[1] !== undefined ? match[1].replace(/\\"/g, '"') : match[2]);
-          if (pattern.lastIndex === 0) break;
-        }
-        rows.push(row);
+</div>
+
+<footer class="credit-footer container">
+  Built by <a href="https://github.com/caitlinsc">caitlinsc</a> on GitHub
+</footer>
+
+<script>
+  const csvFileInput = document.getElementById('csvFile');
+  const showMissingButton = document.getElementById('showMissing');
+  const removeMissingButton = document.getElementById('removeMissing');
+  const statusEl = document.getElementById('status');
+  const resultEl = document.getElementById('result');
+  const resultPanel = document.getElementById('resultPanel');
+
+  let parsedData = null;
+  let headers = [];
+  let upcColumnIndex = -1;
+  let currentDisplayCount = 10;
+  let allRows = null;
+  let displayMode = null;
+
+  function setStatus(msg, kind) {
+    if (!msg) { statusEl.innerHTML = ''; return; }
+    statusEl.innerHTML = `<div class="status ${kind || 'ok'}">${escapeHtml(msg)}</div>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function parseCsv(text) {
+    const rows = [];
+    const pattern = /(?:\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*|\s*([^,]*?)\s*)(?:,|$)/g;
+    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+    for (const line of lines) {
+      const row = [];
+      let match;
+      pattern.lastIndex = 0;
+      while ((match = pattern.exec(line)) && (match[0] !== '')) {
+        row.push(match[1] !== undefined ? match[1].replace(/\\"/g, '"') : match[2]);
+        if (pattern.lastIndex === 0) break;
       }
-      return rows;
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function loadCsv(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file);
+    });
+  }
+
+  function findUpcColumn(headerRow) {
+    const normalized = headerRow.map(cell => cell.toLowerCase().trim());
+    return normalized.findIndex(cell => cell === 'upc' || cell === 'barcode' || cell === 'gtin');
+  }
+
+  function isMissingUpc(cell) {
+    const trimmed = String(cell).trim();
+    const upper = trimmed.toUpperCase();
+    return trimmed === '' || trimmed === '0' || upper === 'N/A';
+  }
+
+  function renderTable(rows, title, enablePagination = true) {
+    resultPanel.style.display = 'block';
+    resultEl.innerHTML = '';
+
+    if (!rows.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-state';
+      empty.textContent = `${title}: no rows found.`;
+      resultEl.appendChild(empty);
+      return;
     }
 
-    function loadCsv(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(file);
+    let displayRows = rows;
+    if (enablePagination) {
+      allRows = rows;
+      displayMode = 'table';
+      displayRows = rows.slice(0, currentDisplayCount);
+    }
+
+    const summary = document.createElement('div');
+    summary.className = 'summary';
+    const p = document.createElement('p');
+    const strong = document.createElement('strong');
+    strong.textContent = title;
+    p.appendChild(strong);
+    p.appendChild(document.createTextNode(
+      enablePagination
+        ? ` — ${rows.length} row(s). Showing ${displayRows.length} of ${rows.length}.`
+        : ` — ${rows.length} row(s).`
+    ));
+    summary.appendChild(p);
+    resultEl.appendChild(summary);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap';
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    headers.forEach(headerText => {
+      const th = document.createElement('th');
+      th.textContent = headerText;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    displayRows.forEach(row => {
+      const tr = document.createElement('tr');
+      headers.forEach((_, index) => {
+        const td = document.createElement('td');
+        td.textContent = row[index] || '';
+        tr.appendChild(td);
       });
-    }
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    resultEl.appendChild(wrap);
 
-    function findUpcColumn(headerRow) {
-      const normalized = headerRow.map(cell => cell.toLowerCase().trim());
-      return normalized.findIndex(cell => cell === 'upc' || cell === 'barcode' || cell === 'gtin');
-    }
+    const actionsBar = document.createElement('div');
+    actionsBar.className = 'actions';
+    actionsBar.style.marginTop = '12px';
 
-    function findSkuColumn(headerRow) {
-      const normalized = headerRow.map(cell => cell.toLowerCase().trim());
-      return normalized.findIndex(cell => cell === 'sku' || cell === 'product id' || cell === 'id');
-    }
-
-    function isMissingUpc(cell) {
-      const trimmed = String(cell).trim();
-      const upper = trimmed.toUpperCase();
-      return trimmed === '' || trimmed === '0' || upper === 'N/A';
-    }
-
-    function renderTable(rows, title, enablePagination = true) {
-      if (!rows.length) {
-        resultEl.innerHTML = `<p>${title}: no rows found.</p>`;
-        return;
-      }
-      
-      let displayRows = rows;
-      if (enablePagination) {
-        allRows = rows;
-        displayMode = 'table';
-        currentDisplayCount = 10;
-        displayRows = rows.slice(0, currentDisplayCount);
-      }
-      
-      const table = document.createElement('table');
-      const thead = document.createElement('thead');
-      const headerRow = document.createElement('tr');
-      headers.forEach(headerText => {
-        const th = document.createElement('th');
-        th.textContent = headerText;
-        headerRow.appendChild(th);
+    if (enablePagination && rows.length > currentDisplayCount) {
+      const loadMoreBtn = document.createElement('button');
+      loadMoreBtn.textContent = 'Load 10 more';
+      loadMoreBtn.addEventListener('click', () => {
+        currentDisplayCount += 10;
+        renderTable(allRows, title, enablePagination);
       });
-      thead.appendChild(headerRow);
-      table.appendChild(thead);
-      const tbody = document.createElement('tbody');
-      displayRows.forEach(row => {
-        const tr = document.createElement('tr');
-        headers.forEach((_, index) => {
-          const td = document.createElement('td');
-          td.textContent = row[index] || '';
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      
-      if (enablePagination) {
-        resultEl.innerHTML = `<p>${title}: ${rows.length} row(s) | Showing ${displayRows.length} of ${rows.length}</p>`;
-      } else {
-        resultEl.innerHTML = `<p>${title}: ${rows.length} row(s)</p>`;
-      }
-      resultEl.appendChild(table);
-      
-      if (enablePagination && rows.length > currentDisplayCount) {
-        const loadMoreBtn = document.createElement('button');
-        loadMoreBtn.textContent = 'Load More';
-        loadMoreBtn.style.marginTop = '12px';
-        loadMoreBtn.addEventListener('click', () => {
-          currentDisplayCount += 10;
-          renderTable(allRows, title, enablePagination);
-        });
-        resultEl.appendChild(loadMoreBtn);
-      }
+      actionsBar.appendChild(loadMoreBtn);
     }
 
-    function renderSkuList(skus, title) {
-      if (!skus.length) {
-        resultEl.innerHTML = `<p>${title}: no SKUs found.</p>`;
-        return;
+    if (actionsBar.children.length > 0) {
+      resultEl.appendChild(actionsBar);
+    }
+  }
+
+  function csvToString(rows) {
+    return rows.map(row => row.map(cell => {
+      if (cell == null) return '';
+      const value = String(cell);
+      if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        return '"' + value.replace(/"/g, '""') + '"';
       }
-      allRows = skus;
-      displayMode = 'sku';
-      currentDisplayCount = 10;
-      
-      const displaySkus = skus.slice(0, currentDisplayCount);
-      const listEl = document.createElement('div');
-      const heading = document.createElement('p');
-      heading.innerHTML = `<strong>${title}: ${skus.length} SKU(s) | Showing ${displaySkus.length} of ${skus.length}</strong>`;
-      listEl.appendChild(heading);
-      
-      const ul = document.createElement('ul');
-      displaySkus.forEach(sku => {
-        const li = document.createElement('li');
-        li.textContent = sku;
-        ul.appendChild(li);
-      });
-      listEl.appendChild(ul);
-      
-      if (skus.length > currentDisplayCount) {
-        const loadMoreBtn = document.createElement('button');
-        loadMoreBtn.textContent = 'Load More';
-        loadMoreBtn.style.marginTop = '12px';
-        loadMoreBtn.addEventListener('click', () => {
-          currentDisplayCount += 10;
-          renderSkuList(allRows, title);
-        });
-        listEl.appendChild(loadMoreBtn);
-      }
-      
-      const downloadLink = document.createElement('button');
-      downloadLink.textContent = 'Download as text file';
-      downloadLink.style.marginLeft = '8px';
-      downloadLink.addEventListener('click', () => {
-        const text = skus.join('\n');
-        const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'missing-upc-skus.txt';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      });
-      listEl.appendChild(downloadLink);
-      
-      resultEl.innerHTML = '';
-      resultEl.appendChild(listEl);
-    }
+      return value;
+    }).join(',')).join('\r\n');
+  }
 
-    function csvToString(rows) {
-      return rows.map(row => row.map(cell => {
-        if (cell == null) return '';
-        const value = String(cell);
-        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-          return '"' + value.replace(/"/g, '""') + '"';
-        }
-        return value;
-      }).join(',')).join('\r\n');
-    }
+  function downloadCsv(data, filename = 'filtered.csv') {
+    const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  }
 
-    function downloadCsv(data, filename = 'filtered.csv') {
-      const blob = new Blob([data], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  async function prepareData() {
+    const file = csvFileInput.files[0];
+    if (!file) {
+      setStatus('Please select a CSV file first.', 'err');
+      return false;
     }
-
-    async function prepareData() {
-      const file = csvFileInput.files[0];
-      if (!file) {
-        statusEl.textContent = 'Please select a CSV file first.';
+    try {
+      setStatus('Loading CSV…', 'ok');
+      const text = await loadCsv(file);
+      const rows = parseCsv(text);
+      if (rows.length < 2) {
+        setStatus('CSV needs at least a header row and one data row.', 'err');
         return false;
       }
-      try {
-        statusEl.textContent = 'Loading CSV...';
-        const text = await loadCsv(file);
-        const rows = parseCsv(text);
-        if (rows.length < 2) {
-          statusEl.textContent = 'CSV needs at least a header row and one data row.';
-          return false;
-        }
-        headers = rows[0];
-        parsedData = rows.slice(1).filter(row => row.some(cell => cell !== undefined));
-        upcColumnIndex = findUpcColumn(headers);
-        if (upcColumnIndex === -1) {
-          statusEl.textContent = 'UPC column not found. Please ensure there is a header named UPC, Barcode, or GTIN.';
-          return false;
-        }
-        statusEl.textContent = `Loaded ${parsedData.length} data row(s). UPC column found at header index ${upcColumnIndex}.`;
-        return true;
-      } catch (error) {
-        statusEl.textContent = 'Could not parse the CSV file. Check file encoding and format.';
+      headers = rows[0];
+      parsedData = rows.slice(1).filter(row => row.some(cell => cell !== undefined));
+      upcColumnIndex = findUpcColumn(headers);
+      if (upcColumnIndex === -1) {
+        setStatus('UPC column not found. Please ensure there is a header named UPC, Barcode, or GTIN.', 'err');
         return false;
       }
+      setStatus(`Loaded ${parsedData.length} row(s). Using "${headers[upcColumnIndex]}" as the UPC column.`, 'ok');
+      return true;
+    } catch (error) {
+      setStatus('Could not parse the CSV file. Check file encoding and format.', 'err');
+      return false;
     }
+  }
 
-    showMissingButton.addEventListener('click', async () => {
-      resultEl.innerHTML = '';
-      if (!await prepareData()) return;
-      
-      const rowsWithUpc = parsedData.filter(row => {
-        const cell = row[upcColumnIndex] || '';
-        return !isMissingUpc(cell);
-      });
-      
-      renderTable(rowsWithUpc, 'Rows with UPC', true);
+  showMissingButton.addEventListener('click', async () => {
+    resultEl.innerHTML = '';
+    resultPanel.style.display = 'none';
+    currentDisplayCount = 10;
+    if (!await prepareData()) return;
+
+    const rowsWithUpc = parsedData.filter(row => {
+      const cell = row[upcColumnIndex] || '';
+      return !isMissingUpc(cell);
     });
 
-    removeMissingButton.addEventListener('click', async () => {
-      resultEl.innerHTML = '';
-      if (!await prepareData()) return;
-      const keptRows = parsedData.filter(row => {
-        const cell = row[upcColumnIndex] || '';
-        return isMissingUpc(cell);
-      });
-      renderTable(keptRows, 'Rows without UPC (kept)', true);
-      const csvText = csvToString([headers, ...keptRows]);
-      const downloadLink = document.createElement('button');
-      downloadLink.textContent = 'Download filtered CSV';
-      downloadLink.style.marginTop = '12px';
-      downloadLink.addEventListener('click', () => downloadCsv(csvText, 'filtered-upc.csv'));
-      resultEl.appendChild(downloadLink);
+    renderTable(rowsWithUpc, 'Rows with UPC', true);
+  });
+
+  removeMissingButton.addEventListener('click', async () => {
+    resultEl.innerHTML = '';
+    resultPanel.style.display = 'none';
+    currentDisplayCount = 10;
+    if (!await prepareData()) return;
+
+    const keptRows = parsedData.filter(row => {
+      const cell = row[upcColumnIndex] || '';
+      return isMissingUpc(cell);
     });
-  </script>
+    renderTable(keptRows, 'Rows without UPC (kept)', true);
+
+    const csvText = csvToString([headers, ...keptRows]);
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'primary';
+    downloadBtn.textContent = 'Download filtered CSV';
+    downloadBtn.style.marginTop = '12px';
+    downloadBtn.addEventListener('click', () => downloadCsv(csvText, 'filtered-upc.csv'));
+
+    // Find the existing actions bar (from Load More) or create one
+    let actionsBar = resultEl.querySelector('.actions');
+    if (!actionsBar) {
+      actionsBar = document.createElement('div');
+      actionsBar.className = 'actions';
+      actionsBar.style.marginTop = '12px';
+      resultEl.appendChild(actionsBar);
+      actionsBar.appendChild(downloadBtn);
+    } else {
+      actionsBar.insertBefore(downloadBtn, actionsBar.firstChild);
+      downloadBtn.style.marginTop = '0';
+    }
+  });
+</script>
 </body>
 </html>
