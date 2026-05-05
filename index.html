@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Missing UPC Tool</title>
+<title>CSV UPC Filter Tool</title>
 <style>
   :root {
     --bg: #f7f6f2;
@@ -121,6 +121,8 @@
   }
   table tr:last-child td { border-bottom: none; }
   table tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
+  table tr.row-flag td,
+  table tr.row-flag:nth-child(even) td { background: var(--warn-bg); color: var(--warn-text); }
 
   .sku-list {
     margin: 0; padding: 0;
@@ -161,8 +163,8 @@
 <body>
 <div class="container">
 
-<h1>Missing UPC Tool</h1>
-<p class="subtitle">Upload a CSV with SKU, name, brand, and UPC columns. Preview rows that have a UPC, or remove them and download what's left.</p>
+<h1>CSV UPC filter</h1>
+<p class="subtitle">Two tools in one. <strong>Filter:</strong> remove rows that already have a UPC. <strong>Fill from IMU:</strong> use a master IMU export to fill in missing UPCs by SKU.</p>
 
 <div class="panel">
   <h2><span class="panel-num">1</span>Upload CSV</h2>
@@ -181,8 +183,21 @@
   <div id="status"></div>
 </div>
 
+<div class="panel">
+  <h2><span class="panel-num">3</span>Fill missing UPCs from IMU</h2>
+  <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+    Upload a master IMU CSV. The tool will look up each row's SKU and fill in any missing UPC from IMU. SKUs not found in IMU (or with a blank IMU UPC) are kept in the output and <span style="background: var(--warn-bg); color: var(--warn-text); padding: 1px 6px; border-radius: 4px;">highlighted</span> in the preview.
+  </div>
+  <label style="margin-top: 4px;">IMU master list</label>
+  <input id="imuFile" type="file" accept=".csv" />
+  <div class="actions" style="margin-top: 12px;">
+    <button id="fillFromImu" class="primary">Fill UPCs and preview</button>
+  </div>
+  <div id="imuStatus"></div>
+</div>
+
 <div class="panel" id="resultPanel" style="display:none;">
-  <h2><span class="panel-num">3</span>Results</h2>
+  <h2><span class="panel-num">4</span>Results</h2>
   <div id="result"></div>
 </div>
 
@@ -197,6 +212,9 @@
   const csvFileInput = document.getElementById('csvFile');
   const showMissingButton = document.getElementById('showMissing');
   const removeMissingButton = document.getElementById('removeMissing');
+  const imuFileInput = document.getElementById('imuFile');
+  const fillFromImuButton = document.getElementById('fillFromImu');
+  const imuStatusEl = document.getElementById('imuStatus');
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
   const resultPanel = document.getElementById('resultPanel');
@@ -208,9 +226,10 @@
   let allRows = null;
   let displayMode = null;
 
-  function setStatus(msg, kind) {
-    if (!msg) { statusEl.innerHTML = ''; return; }
-    statusEl.innerHTML = `<div class="status ${kind || 'ok'}">${escapeHtml(msg)}</div>`;
+  function setStatus(msg, kind, target) {
+    const el = target || statusEl;
+    if (!msg) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="status ${kind || 'ok'}">${escapeHtml(msg)}</div>`;
   }
 
   function escapeHtml(s) {
@@ -224,13 +243,41 @@
     return normalized.findIndex(cell => cell === 'upc' || cell === 'barcode' || cell === 'gtin');
   }
 
+  function findSkuColumn(headerRow) {
+    const normalized = headerRow.map(cell => cell.toLowerCase().trim());
+    return normalized.findIndex(cell =>
+      cell === 'sku' ||
+      cell === 'item number' || cell === 'item #' || cell === 'item no' || cell === 'item no.' ||
+      cell === 'product id' || cell === 'product number' || cell === 'product #'
+    );
+  }
+
+  function parseFile(file) {
+    return new Promise(resolve => {
+      Papa.parse(file, {
+        skipEmptyLines: true,
+        complete: result => {
+          const rows = result.data;
+          if (rows.length < 2) {
+            resolve({ error: 'CSV needs at least a header row and one data row.' });
+            return;
+          }
+          const headers = rows[0];
+          const data = rows.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
+          resolve({ headers, rows: data });
+        },
+        error: err => resolve({ error: 'Could not parse CSV: ' + err.message })
+      });
+    });
+  }
+
   function isMissingUpc(cell) {
     const trimmed = String(cell).trim();
     const upper = trimmed.toUpperCase();
     return trimmed === '' || trimmed === '0' || upper === 'N/A';
   }
 
-  function renderTable(rows, title, enablePagination = true) {
+  function renderTable(rows, title, enablePagination = true, flagRow = null) {
     resultPanel.style.display = 'block';
     resultEl.innerHTML = '';
 
@@ -279,6 +326,9 @@
     const tbody = document.createElement('tbody');
     displayRows.forEach(row => {
       const tr = document.createElement('tr');
+      if (flagRow && flagRow(row)) {
+        tr.className = 'row-flag';
+      }
       headers.forEach((_, index) => {
         const td = document.createElement('td');
         td.textContent = row[index] || '';
@@ -299,7 +349,7 @@
       loadMoreBtn.textContent = 'Load 10 more';
       loadMoreBtn.addEventListener('click', () => {
         currentDisplayCount += 10;
-        renderTable(allRows, title, enablePagination);
+        renderTable(allRows, title, enablePagination, flagRow);
       });
       actionsBar.appendChild(loadMoreBtn);
     }
@@ -412,6 +462,98 @@
     } else {
       actionsBar.insertBefore(downloadBtn, actionsBar.firstChild);
       downloadBtn.style.marginTop = '0';
+    }
+  });
+
+  fillFromImuButton.addEventListener('click', async () => {
+    resultEl.innerHTML = '';
+    resultPanel.style.display = 'none';
+    currentDisplayCount = 10;
+    setStatus('', null, imuStatusEl);
+
+    const mainFile = csvFileInput.files[0];
+    const imuFile = imuFileInput.files[0];
+    if (!mainFile) {
+      setStatus('Please upload your CSV in step 1 first.', 'err', imuStatusEl);
+      return;
+    }
+    if (!imuFile) {
+      setStatus('Please select an IMU master CSV.', 'err', imuStatusEl);
+      return;
+    }
+
+    setStatus('Parsing both files…', 'ok', imuStatusEl);
+    const [main, imu] = await Promise.all([parseFile(mainFile), parseFile(imuFile)]);
+    if (main.error) { setStatus('Main CSV: ' + main.error, 'err', imuStatusEl); return; }
+    if (imu.error)  { setStatus('IMU CSV: '  + imu.error,  'err', imuStatusEl); return; }
+
+    const mainSkuIdx = findSkuColumn(main.headers);
+    const mainUpcIdx = findUpcColumn(main.headers);
+    const imuSkuIdx  = findSkuColumn(imu.headers);
+    const imuUpcIdx  = findUpcColumn(imu.headers);
+
+    if (mainSkuIdx === -1) { setStatus('Main CSV: no SKU column found (looked for SKU, Item Number, Product ID, etc.).', 'err', imuStatusEl); return; }
+    if (mainUpcIdx === -1) { setStatus('Main CSV: no UPC column found (looked for UPC, Barcode, GTIN).', 'err', imuStatusEl); return; }
+    if (imuSkuIdx === -1)  { setStatus('IMU CSV: no SKU column found.', 'err', imuStatusEl); return; }
+    if (imuUpcIdx === -1)  { setStatus('IMU CSV: no UPC column found.', 'err', imuStatusEl); return; }
+
+    // Build SKU -> UPC lookup from IMU. Last-write-wins on duplicate SKUs.
+    const imuLookup = new Map();
+    for (const row of imu.rows) {
+      const sku = String(row[imuSkuIdx] || '').trim();
+      if (!sku) continue;
+      const upc = String(row[imuUpcIdx] || '').trim();
+      if (isMissingUpc(upc)) continue;
+      imuLookup.set(sku, upc);
+    }
+
+    // Walk main rows: if UPC is missing, try to fill from IMU.
+    let filled = 0;
+    let stillMissing = 0;
+    const enrichedRows = main.rows.map(row => {
+      const out = row.slice();
+      const currentUpc = out[mainUpcIdx] || '';
+      if (!isMissingUpc(currentUpc)) return out;
+      const sku = String(out[mainSkuIdx] || '').trim();
+      const found = sku ? imuLookup.get(sku) : null;
+      if (found) {
+        out[mainUpcIdx] = found;
+        filled++;
+      } else {
+        stillMissing++;
+      }
+      return out;
+    });
+
+    // Set the module-level state used by renderTable.
+    headers = main.headers;
+    parsedData = enrichedRows;
+    upcColumnIndex = mainUpcIdx;
+
+    setStatus(
+      `Filled ${filled} UPC(s) from IMU. ${stillMissing} row(s) still missing a UPC are highlighted below.`,
+      stillMissing > 0 ? 'warn' : 'ok',
+      imuStatusEl
+    );
+
+    const flagRow = row => isMissingUpc(row[mainUpcIdx] || '');
+    renderTable(enrichedRows, 'CSV with UPCs filled from IMU', true, flagRow);
+
+    const csvText = csvToString([headers, ...enrichedRows]);
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'primary';
+    downloadBtn.textContent = 'Download enriched CSV';
+    downloadBtn.addEventListener('click', () => downloadCsv(csvText, 'upc-filled.csv'));
+
+    let actionsBar = resultEl.querySelector('.actions');
+    if (!actionsBar) {
+      actionsBar = document.createElement('div');
+      actionsBar.className = 'actions';
+      actionsBar.style.marginTop = '12px';
+      resultEl.appendChild(actionsBar);
+      actionsBar.appendChild(downloadBtn);
+    } else {
+      actionsBar.insertBefore(downloadBtn, actionsBar.firstChild);
     }
   });
 </script>
