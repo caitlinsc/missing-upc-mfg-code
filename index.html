@@ -557,7 +557,7 @@
     const salesforceCsv = csvToString([['ID', 'UPC'], ...filledPairs]);
     const extraActions = filled > 0
       ? [{
-          label: `Download Salesforce update (${filled} row${filled === 1 ? '' : 's'})`,
+          label: `Download Salesforce-ready file (${filled} row${filled === 1 ? '' : 's'})`,
           primary: true,
           onClick: () => downloadCsv(salesforceCsv, 'salesforce-upc-update.csv')
         }]
