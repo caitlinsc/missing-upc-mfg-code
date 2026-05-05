@@ -186,10 +186,10 @@
 <div class="panel">
   <h2><span class="panel-num">3</span>Fill missing UPCs from IMU</h2>
   <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-    Upload a master IMU CSV. The tool will look up each row's SKU and fill in any missing UPC from IMU. SKUs not found in IMU (or with a blank IMU UPC) are kept in the output and <span style="background: var(--warn-bg); color: var(--warn-text); padding: 1px 6px; border-radius: 4px;">highlighted</span> in the preview.
+    Upload a master IMU file (CSV, XLS, or XLSX). The tool will look up each row's SKU and fill in any missing UPC from IMU. SKUs not found in IMU (or with a blank IMU UPC) are kept in the output and <span style="background: var(--warn-bg); color: var(--warn-text); padding: 1px 6px; border-radius: 4px;">highlighted</span> in the preview.
   </div>
   <label style="margin-top: 4px;">IMU master list</label>
-  <input id="imuFile" type="file" accept=".csv" />
+  <input id="imuFile" type="file" accept=".csv,.xls,.xlsx" />
   <div class="actions" style="margin-top: 12px;">
     <button id="fillFromImu" class="primary">Fill UPCs and preview</button>
   </div>
@@ -208,6 +208,7 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
   const csvFileInput = document.getElementById('csvFile');
   const showMissingButton = document.getElementById('showMissing');
@@ -253,13 +254,19 @@
   }
 
   function parseFile(file) {
+    const name = (file.name || '').toLowerCase();
+    const isExcel = name.endsWith('.xls') || name.endsWith('.xlsx');
+    return isExcel ? parseExcelFile(file) : parseCsvFile(file);
+  }
+
+  function parseCsvFile(file) {
     return new Promise(resolve => {
       Papa.parse(file, {
         skipEmptyLines: true,
         complete: result => {
           const rows = result.data;
           if (rows.length < 2) {
-            resolve({ error: 'CSV needs at least a header row and one data row.' });
+            resolve({ error: 'File needs at least a header row and one data row.' });
             return;
           }
           const headers = rows[0];
@@ -268,6 +275,49 @@
         },
         error: err => resolve({ error: 'Could not parse CSV: ' + err.message })
       });
+    });
+  }
+
+  function parseExcelFile(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve({ error: 'Could not read Excel file.' });
+      reader.onload = () => {
+        try {
+          const workbook = XLSX.read(reader.result, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          if (!sheetName) {
+            resolve({ error: 'Excel file has no sheets.' });
+            return;
+          }
+          const sheet = workbook.Sheets[sheetName];
+          // Read formatted strings (raw: false) so e.g. UPC "012345678905" keeps its
+          // leading zero. But if Excel was displaying a numeric cell in scientific
+          // notation ("1.23E+11"), the formatted string is useless — fall back to the
+          // raw numeric value coerced to a plain integer string.
+          const formatted = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+          const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true,  defval: '' });
+          const rows = formatted.map((row, i) => row.map((cell, j) => {
+            const s = String(cell);
+            if (/[eE]\+?\d/.test(s)) {
+              const rawCell = raw[i] && raw[i][j];
+              if (typeof rawCell === 'number' && Number.isFinite(rawCell)) {
+                return rawCell.toFixed(0);
+              }
+            }
+            return s;
+          }));
+          const trimmed = rows.filter(row => row.some(cell => cell !== undefined && cell !== ''));
+          if (trimmed.length < 2) {
+            resolve({ error: 'Excel file needs at least a header row and one data row.' });
+            return;
+          }
+          resolve({ headers: trimmed[0].map(c => String(c)), rows: trimmed.slice(1) });
+        } catch (err) {
+          resolve({ error: 'Could not parse Excel file: ' + err.message });
+        }
+      };
+      reader.readAsArrayBuffer(file);
     });
   }
 
