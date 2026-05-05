@@ -249,11 +249,15 @@
 
   function findSkuColumn(headerRow) {
     const normalized = headerRow.map(cell => cell.toLowerCase().trim());
-    return normalized.findIndex(cell =>
-      cell === 'sku' ||
-      cell === 'item number' || cell === 'item #' || cell === 'item no' || cell === 'item no.' ||
-      cell === 'product id' || cell === 'product number' || cell === 'product #'
-    );
+    // Prefer specific names. If none match, fall back to generic ones like "id"
+    // which could plausibly mean something else (e.g. a row index) in some files.
+    const specific = ['sku', 'item number', 'item #', 'item no', 'item no.', 'item code',
+                      'product id', 'product number', 'product #', 'product code',
+                      'style number', 'style #', 'style no', 'part number', 'part #'];
+    const generic = ['id', 'item', 'product'];
+    let idx = normalized.findIndex(cell => specific.includes(cell));
+    if (idx !== -1) return idx;
+    return normalized.findIndex(cell => generic.includes(cell));
   }
 
   function parseFile(file) {
