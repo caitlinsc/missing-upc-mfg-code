@@ -192,6 +192,7 @@
   Built by <a href="https://github.com/caitlinsc">caitlinsc</a> on GitHub
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
   const csvFileInput = document.getElementById('csvFile');
   const showMissingButton = document.getElementById('showMissing');
@@ -216,32 +217,6 @@
     return String(s).replace(/[&<>"']/g, c => ({
       '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
     }[c]));
-  }
-
-  function parseCsv(text) {
-    const rows = [];
-    const pattern = /(?:\s*"([^"\\]*(?:\\.[^"\\]*)*)"\s*|\s*([^,]*?)\s*)(?:,|$)/g;
-    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-    for (const line of lines) {
-      const row = [];
-      let match;
-      pattern.lastIndex = 0;
-      while ((match = pattern.exec(line)) && (match[0] !== '')) {
-        row.push(match[1] !== undefined ? match[1].replace(/\\"/g, '"') : match[2]);
-        if (pattern.lastIndex === 0) break;
-      }
-      rows.push(row);
-    }
-    return rows;
-  }
-
-  function loadCsv(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(reader.error);
-      reader.readAsText(file);
-    });
   }
 
   function findUpcColumn(headerRow) {
@@ -356,33 +331,41 @@
     URL.revokeObjectURL(link.href);
   }
 
-  async function prepareData() {
-    const file = csvFileInput.files[0];
-    if (!file) {
-      setStatus('Please select a CSV file first.', 'err');
-      return false;
-    }
-    try {
+  function prepareData() {
+    return new Promise(resolve => {
+      const file = csvFileInput.files[0];
+      if (!file) {
+        setStatus('Please select a CSV file first.', 'err');
+        resolve(false);
+        return;
+      }
       setStatus('Loading CSV…', 'ok');
-      const text = await loadCsv(file);
-      const rows = parseCsv(text);
-      if (rows.length < 2) {
-        setStatus('CSV needs at least a header row and one data row.', 'err');
-        return false;
-      }
-      headers = rows[0];
-      parsedData = rows.slice(1).filter(row => row.some(cell => cell !== undefined));
-      upcColumnIndex = findUpcColumn(headers);
-      if (upcColumnIndex === -1) {
-        setStatus('UPC column not found. Please ensure there is a header named UPC, Barcode, or GTIN.', 'err');
-        return false;
-      }
-      setStatus(`Loaded ${parsedData.length} row(s). Using "${headers[upcColumnIndex]}" as the UPC column.`, 'ok');
-      return true;
-    } catch (error) {
-      setStatus('Could not parse the CSV file. Check file encoding and format.', 'err');
-      return false;
-    }
+      Papa.parse(file, {
+        skipEmptyLines: true,
+        complete: result => {
+          const rows = result.data;
+          if (rows.length < 2) {
+            setStatus('CSV needs at least a header row and one data row.', 'err');
+            resolve(false);
+            return;
+          }
+          headers = rows[0];
+          parsedData = rows.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
+          upcColumnIndex = findUpcColumn(headers);
+          if (upcColumnIndex === -1) {
+            setStatus('UPC column not found. Please ensure there is a header named UPC, Barcode, or GTIN.', 'err');
+            resolve(false);
+            return;
+          }
+          setStatus(`Loaded ${parsedData.length} row(s). Using "${headers[upcColumnIndex]}" as the UPC column.`, 'ok');
+          resolve(true);
+        },
+        error: err => {
+          setStatus('Could not parse CSV: ' + err.message, 'err');
+          resolve(false);
+        }
+      });
+    });
   }
 
   showMissingButton.addEventListener('click', async () => {
