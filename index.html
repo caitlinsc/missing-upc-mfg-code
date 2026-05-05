@@ -285,7 +285,7 @@
     return trimmed === '' || trimmed === '0' || upper === 'N/A';
   }
 
-  function renderTable(rows, title, enablePagination = true, flagRow = null) {
+  function renderTable(rows, title, enablePagination = true, flagRow = null, extraActions = []) {
     resultPanel.style.display = 'block';
     resultEl.innerHTML = '';
 
@@ -352,12 +352,23 @@
     actionsBar.className = 'actions';
     actionsBar.style.marginTop = '12px';
 
+    // Extra action buttons (e.g. "Download enriched CSV") go first so they're
+    // visually prominent. Rendering them inside the bar that renderTable owns
+    // means they survive Load More re-renders.
+    extraActions.forEach(({ label, onClick, primary }) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      if (primary) btn.className = 'primary';
+      btn.addEventListener('click', onClick);
+      actionsBar.appendChild(btn);
+    });
+
     if (enablePagination && rows.length > currentDisplayCount) {
       const loadMoreBtn = document.createElement('button');
       loadMoreBtn.textContent = 'Load 10 more';
       loadMoreBtn.addEventListener('click', () => {
         currentDisplayCount += 10;
-        renderTable(allRows, title, enablePagination, flagRow);
+        renderTable(allRows, title, enablePagination, flagRow, extraActions);
       });
       actionsBar.appendChild(loadMoreBtn);
     }
@@ -450,27 +461,10 @@
       const cell = row[upcColumnIndex] || '';
       return isMissingUpc(cell);
     });
-    renderTable(keptRows, 'Rows without UPC (kept)', true);
-
     const csvText = csvToString([headers, ...keptRows]);
-    const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'primary';
-    downloadBtn.textContent = 'Download filtered CSV';
-    downloadBtn.style.marginTop = '12px';
-    downloadBtn.addEventListener('click', () => downloadCsv(csvText, 'filtered-upc.csv'));
-
-    // Find the existing actions bar (from Load More) or create one
-    let actionsBar = resultEl.querySelector('.actions');
-    if (!actionsBar) {
-      actionsBar = document.createElement('div');
-      actionsBar.className = 'actions';
-      actionsBar.style.marginTop = '12px';
-      resultEl.appendChild(actionsBar);
-      actionsBar.appendChild(downloadBtn);
-    } else {
-      actionsBar.insertBefore(downloadBtn, actionsBar.firstChild);
-      downloadBtn.style.marginTop = '0';
-    }
+    renderTable(keptRows, 'Rows without UPC (kept)', true, null, [
+      { label: 'Download filtered CSV', primary: true, onClick: () => downloadCsv(csvText, 'filtered-upc.csv') }
+    ]);
   });
 
   fillFromImuButton.addEventListener('click', async () => {
@@ -558,24 +552,10 @@
     );
 
     const flagRow = row => isMissingUpc(row[mainUpcIdx] || '');
-    renderTable(enrichedRows, 'CSV with UPCs filled from IMU', true, flagRow);
-
     const csvText = csvToString([headers, ...enrichedRows]);
-    const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'primary';
-    downloadBtn.textContent = 'Download enriched CSV';
-    downloadBtn.addEventListener('click', () => downloadCsv(csvText, 'upc-filled.csv'));
-
-    let actionsBar = resultEl.querySelector('.actions');
-    if (!actionsBar) {
-      actionsBar = document.createElement('div');
-      actionsBar.className = 'actions';
-      actionsBar.style.marginTop = '12px';
-      resultEl.appendChild(actionsBar);
-      actionsBar.appendChild(downloadBtn);
-    } else {
-      actionsBar.insertBefore(downloadBtn, actionsBar.firstChild);
-    }
+    renderTable(enrichedRows, 'CSV with UPCs filled from IMU', true, flagRow, [
+      { label: 'Download enriched CSV', primary: true, onClick: () => downloadCsv(csvText, 'upc-filled.csv') }
+    ]);
   });
 </script>
 </body>
