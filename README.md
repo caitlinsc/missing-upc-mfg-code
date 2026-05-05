@@ -2,6 +2,8 @@
 
 A browser-based tool for finding and filling in missing UPCs in product CSVs, then producing a Salesforce-ready upload file.
 
+**Live tool:** https://caitlinsc.github.io/missing-upc/
+
 ## What it does
 
 The tool has two modes that share an uploaded CSV:
@@ -15,7 +17,7 @@ Everything runs in the browser. No data is uploaded anywhere.
 
 ### Setup
 
-Open `index.html` in a browser. That's it — no install, no server.
+Open the [live tool](https://caitlinsc.github.io/missing-upc/) in any modern browser. No install, no login. (You can also clone the repo and open `index.html` directly if you want to run it locally.)
 
 ### Step 1: Upload your main CSV
 
