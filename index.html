@@ -521,6 +521,7 @@
     // Walk main rows: if UPC is missing, try to fill from IMU.
     let filled = 0;
     let stillMissing = 0;
+    const filledPairs = []; // (sku, upc) pairs that were actually filled from IMU
     const enrichedRows = main.rows.map(row => {
       const out = row.slice();
       const currentUpc = out[mainUpcIdx] || '';
@@ -530,6 +531,7 @@
       if (found) {
         out[mainUpcIdx] = found;
         filled++;
+        filledPairs.push([sku, found]);
       } else {
         stillMissing++;
       }
@@ -552,10 +554,15 @@
     );
 
     const flagRow = row => isMissingUpc(row[mainUpcIdx] || '');
-    const csvText = csvToString([headers, ...enrichedRows]);
-    renderTable(enrichedRows, 'CSV with UPCs filled from IMU', true, flagRow, [
-      { label: 'Download enriched CSV', primary: true, onClick: () => downloadCsv(csvText, 'upc-filled.csv') }
-    ]);
+    const salesforceCsv = csvToString([['ID', 'UPC'], ...filledPairs]);
+    const extraActions = filled > 0
+      ? [{
+          label: `Download Salesforce update (${filled} row${filled === 1 ? '' : 's'})`,
+          primary: true,
+          onClick: () => downloadCsv(salesforceCsv, 'salesforce-upc-update.csv')
+        }]
+      : [];
+    renderTable(enrichedRows, 'CSV with UPCs filled from IMU', true, flagRow, extraActions);
   });
 </script>
 </body>
