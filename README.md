@@ -1,4 +1,4 @@
-# Missing UPC Tool
+# Missing UPC
 
 A browser-based tool for filling in missing UPCs in product CSVs and producing a Salesforce-ready upload file.
 
