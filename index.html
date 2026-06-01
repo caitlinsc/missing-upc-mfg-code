@@ -353,7 +353,7 @@
   <div class="header-inner">
     <h1>Missing UPC &amp; MFG Tool</h1>
     <span class="tag">Browser-only</span>
-    <p>Fill missing UPCs and Manufacturer Part Numbers from an IMU master export. Filter, preview, and download Salesforce-ready files. Nothing leaves your browser.</p>
+    <p>Fill missing UPCs and MFG codes in a Salesforce export using a Compass master file. Preview and download the enriched CSV. Nothing leaves your browser.</p>
   </div>
 </div>
 
@@ -362,7 +362,7 @@
   <div class="sidebar">
 
     <div class="panel">
-      <h2><span class="panel-num">1</span> Your CSV</h2>
+      <h2><span class="panel-num">1</span> Salesforce Export CSV</h2>
       <div class="file-drop" id="mainDrop">
         <input id="csvFile" type="file" accept=".csv" />
         <div class="drop-label">Drop CSV here or <strong>browse</strong></div>
@@ -375,26 +375,17 @@
     </div>
 
     <div class="panel">
-      <h2><span class="panel-num">2</span> Filter</h2>
-      <div class="btn-group">
-        <button id="showWithUpc">Preview rows that have UPCs</button>
-        <button id="downloadMissing">Download rows missing UPCs</button>
-      </div>
-      <div id="filterStatus"></div>
-    </div>
-
-    <div class="panel">
-      <h2><span class="panel-num">3</span> Fill from IMU</h2>
+      <h2><span class="panel-num">2</span> Fill from Compass</h2>
       <div class="file-drop" id="imuDrop">
         <input id="imuFile" type="file" accept=".csv" />
-        <div class="drop-label">Drop IMU CSV or <strong>browse</strong></div>
+        <div class="drop-label">Drop Compass CSV or <strong>browse</strong></div>
         <div class="file-name" id="imuFileName"></div>
       </div>
       <div class="hint" style="margin-bottom: 10px;">
-        Looks up each SKU in the IMU file and fills missing <strong>UPC</strong> and <strong>MPN</strong> values. Rows still missing data are highlighted.
+        Looks up each SKU in the Compass export and fills missing <strong>UPC</strong> and <strong>MFG code</strong> values. Rows still missing data are highlighted.
       </div>
       <div class="btn-group">
-        <button id="fillFromImu" class="primary">Fill UPCs &amp; MFG codes</button>
+        <button id="fillFromImu" class="primary">Fill UPCs &amp; MFG codes from Compass</button>
       </div>
       <div id="imuStatus"></div>
       <div class="warning-banner">
@@ -425,7 +416,6 @@ const imuFileInput    = document.getElementById('imuFile');
 const mainFileNameEl  = document.getElementById('mainFileName');
 const imuFileNameEl   = document.getElementById('imuFileName');
 const mainStatusEl    = document.getElementById('mainStatus');
-const filterStatusEl  = document.getElementById('filterStatus');
 const imuStatusEl     = document.getElementById('imuStatus');
 const resultsArea     = document.getElementById('resultsArea');
 
@@ -489,7 +479,9 @@ function findSkuCol(h) {
 
 function findMpnCol(h) {
   return findCol(h, [
+    'manufacturersku','manufacturer sku','manufacturer_sku',
     'mfg','mfg code','mfg #','mfg number','mfg part','mfg part number','mfg part #',
+    'mfg sku','mfgsku',
     'manufacturer part number','manufacturer code','manufacturer #',
     'mpn','mfr part','mfr part number','mfr #','mfr code',
     'vendor part','vendor part number','vendor #','vendor code',
@@ -557,7 +549,7 @@ async function prepareMain(statusEl) {
 }
 
 /* ── Render table ── */
-function renderTable({ rows, title, flagRow, filledUpcSet, filledMpnSet, extraActions }) {
+function renderTable({ rows, title, flagRow, filledUpcSet, filledMpnSet, extraActions, stats }) {
   resultsArea.innerHTML = '';
   if (!rows.length) {
     resultsArea.innerHTML = `<div class="results-empty"><div class="icon">🔍</div>${esc(title)}: no rows found.</div>`;
@@ -569,11 +561,19 @@ function renderTable({ rows, title, flagRow, filledUpcSet, filledMpnSet, extraAc
   /* Summary bar */
   const bar = document.createElement('div');
   bar.className = 'summary-bar';
-  bar.innerHTML = `
-    <div class="stat"><strong>${rows.length}</strong> rows</div>
-    <div class="divider"></div>
-    <div class="stat" style="flex:1;">${esc(title)}${rows.length > showing.length ? ` — showing ${showing.length}` : ''}</div>
-  `;
+  let statsHtml = `<div class="stat"><strong>${rows.length}</strong> rows</div>`;
+  if (stats) {
+    if (stats.upcFilled !== undefined) {
+      statsHtml += `<div class="divider"></div><div class="stat">UPC: <strong>${stats.upcFilled}</strong> filled, <strong>${stats.upcMissing}</strong> missing</div>`;
+    }
+    if (stats.mpnFilled !== undefined) {
+      statsHtml += `<div class="divider"></div><div class="stat">MFG: <strong>${stats.mpnFilled}</strong> filled, <strong>${stats.mpnMissing}</strong> missing</div>`;
+    }
+  }
+  if (rows.length > showing.length) {
+    statsHtml += `<div class="divider"></div><div class="stat">Showing <strong>${showing.length}</strong></div>`;
+  }
+  bar.innerHTML = statsHtml;
   resultsArea.appendChild(bar);
 
   /* Table */
@@ -648,43 +648,18 @@ function renderTable({ rows, title, flagRow, filledUpcSet, filledMpnSet, extraAc
   resultsArea.appendChild(wrap);
 }
 
-/* ── Filter: show rows WITH UPC ── */
-document.getElementById('showWithUpc').addEventListener('click', async () => {
-  currentDisplayCount = 20;
-  if (!await prepareMain(filterStatusEl)) return;
-  if (upcColIdx === -1) { setStatus(filterStatusEl, 'No UPC column found in this file.', 'err'); return; }
-  const withUpc = parsedData.filter(r => !isMissing(r[upcColIdx] || ''));
-  setStatus(filterStatusEl, `${withUpc.length} rows have a UPC; ${parsedData.length - withUpc.length} are missing.`, 'ok');
-  renderTable({ rows: withUpc, title: 'Rows with UPC' });
-});
-
-/* ── Filter: download rows MISSING UPC ── */
-document.getElementById('downloadMissing').addEventListener('click', async () => {
-  currentDisplayCount = 20;
-  if (!await prepareMain(filterStatusEl)) return;
-  if (upcColIdx === -1) { setStatus(filterStatusEl, 'No UPC column found in this file.', 'err'); return; }
-  const missing = parsedData.filter(r => isMissing(r[upcColIdx] || ''));
-  const csv = csvToString([headers, ...missing]);
-  setStatus(filterStatusEl, `${missing.length} rows missing a UPC.`, 'ok');
-  renderTable({
-    rows: missing,
-    title: 'Rows missing UPC',
-    extraActions: [{ label: 'Download filtered CSV', primary: true, onClick: () => downloadCsv(csv, 'missing-upc-rows.csv') }]
-  });
-});
-
 /* ── Fill from IMU ── */
 document.getElementById('fillFromImu').addEventListener('click', async () => {
   currentDisplayCount = 20;
   const mainFile = csvFileInput.files[0];
   const imuFile  = imuFileInput.files[0];
-  if (!mainFile) { setStatus(imuStatusEl, 'Upload your CSV in step 1 first.', 'err'); return; }
-  if (!imuFile)  { setStatus(imuStatusEl, 'Upload an IMU master CSV.', 'err'); return; }
+  if (!mainFile) { setStatus(imuStatusEl, 'Upload your Salesforce CSV in step 1 first.', 'err'); return; }
+  if (!imuFile)  { setStatus(imuStatusEl, 'Upload a Compass export CSV.', 'err'); return; }
 
   setStatus(imuStatusEl, 'Parsing…', 'ok');
   const [main, imu] = await Promise.all([parseFile(mainFile), parseFile(imuFile)]);
   if (main.error) { setStatus(imuStatusEl, 'Main CSV: ' + main.error, 'err'); return; }
-  if (imu.error)  { setStatus(imuStatusEl, 'IMU CSV: ' + imu.error, 'err'); return; }
+  if (imu.error)  { setStatus(imuStatusEl, 'Compass CSV: ' + imu.error, 'err'); return; }
 
   const mSkuI = findSkuCol(main.headers);
   const mUpcI = findUpcCol(main.headers);
@@ -694,7 +669,7 @@ document.getElementById('fillFromImu').addEventListener('click', async () => {
   const iMpnI = findMpnCol(imu.headers);
 
   if (mSkuI === -1) { setStatus(imuStatusEl, 'Main CSV: no SKU column found.', 'err'); return; }
-  if (iSkuI === -1) { setStatus(imuStatusEl, 'IMU CSV: no SKU column found.', 'err'); return; }
+  if (iSkuI === -1) { setStatus(imuStatusEl, 'Compass CSV: no SKU column found.', 'err'); return; }
 
   const hasUpc = mUpcI !== -1 && iUpcI !== -1;
   const hasMpn = mMpnI !== -1 && iMpnI !== -1;
@@ -766,8 +741,8 @@ document.getElementById('fillFromImu').addEventListener('click', async () => {
   /* Status message */
   const msgs = [];
   if (hasUpc) msgs.push(`UPC: ${upcFilled} filled, ${upcStillMissing} still missing`);
-  if (hasMpn) msgs.push(`MPN: ${mpnFilled} filled, ${mpnStillMissing} still missing`);
-  if (invalidUpc > 0) msgs.push(`${invalidUpc} invalid UPC value(s) ignored in IMU`);
+  if (hasMpn) msgs.push(`MFG code: ${mpnFilled} filled, ${mpnStillMissing} still missing`);
+  if (invalidUpc > 0) msgs.push(`${invalidUpc} invalid UPC value(s) ignored in Compass`);
   const anyMissing = upcStillMissing > 0 || mpnStillMissing > 0;
   setStatus(imuStatusEl, msgs.join('. ') + '.', anyMissing ? 'warn' : 'ok');
 
@@ -781,37 +756,26 @@ document.getElementById('fillFromImu').addEventListener('click', async () => {
   /* Download actions */
   const extraActions = [];
 
-  if (upcFilled > 0) {
-    const sfUpc = csvToString([['ID','UPC'], ...filledUpcPairs]);
-    extraActions.push({
-      label: `↓ SF UPC file (${upcFilled})`,
-      primary: true,
-      onClick: () => downloadCsv(sfUpc, 'salesforce-upc-update.csv')
-    });
-  }
-  if (mpnFilled > 0) {
-    const sfMpn = csvToString([['ID','ManufacturerPartNumber'], ...filledMpnPairs]);
-    extraActions.push({
-      label: `↓ SF MFG file (${mpnFilled})`,
-      primary: true,
-      onClick: () => downloadCsv(sfMpn, 'salesforce-mpn-update.csv')
-    });
-  }
   if (upcFilled > 0 || mpnFilled > 0) {
     const fullCsv = csvToString([headers, ...enriched]);
     extraActions.push({
-      label: '↓ Full enriched CSV',
+      label: `↓ Download enriched CSV (${upcFilled + mpnFilled} values filled)`,
+      primary: true,
       onClick: () => downloadCsv(fullCsv, 'enriched-full.csv')
     });
   }
 
   renderTable({
     rows: enriched,
-    title: 'CSV with UPCs & MPN filled from IMU',
+    title: 'CSV with UPCs & MFG codes filled from Compass',
     flagRow,
     filledUpcSet: filledUpcSkus,
     filledMpnSet: filledMpnSkus,
-    extraActions
+    extraActions,
+    stats: {
+      ...(hasUpc ? { upcFilled, upcMissing: upcStillMissing } : {}),
+      ...(hasMpn ? { mpnFilled, mpnMissing: mpnStillMissing } : {})
+    }
   });
 });
 </script>
