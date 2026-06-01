@@ -1,4 +1,4 @@
-# Missing UPC & MFG Tool
+# Missing UPC & MFG Code Tool
 
 A browser-based tool for filling in missing UPCs and Manufacturer Part Numbers (MPNs) in product CSVs and producing Salesforce-ready upload files.
 
