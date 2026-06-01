@@ -2,7 +2,7 @@
 
 A browser-based tool for filling in missing UPCs and Manufacturer Part Numbers (MPNs) in product CSVs and producing Salesforce-ready upload files.
 
-**Live tool:** [https://caitlinsc.github.io/missing-upc/](https://caitlinsc.github.io/missing-upc-mfg-code/)
+**Live tool:** [https://caitlinsc.github.io/missing-upc-mfg-code/](https://caitlinsc.github.io/missing-upc-mfg-code/)
 
 Everything runs in the browser. No data is uploaded anywhere.
 
